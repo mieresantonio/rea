@@ -14,7 +14,10 @@ import {
   addSemanticGraphRelation,
   addSemanticGraphUnknown,
 } from "./JavaScriptSemanticGraphConstruction.js";
-import { unknownSemanticEvidence } from "./JavaScriptSemanticGraphEvidence.js";
+import {
+  inferredSemanticEvidenceAt,
+  unknownSemanticEvidence,
+} from "./JavaScriptSemanticGraphEvidence.js";
 import type { SemanticFlowProjectionContext } from "./JavaScriptSemanticGraphFlowProjection.js";
 import { semanticPropertySlot } from "./JavaScriptSemanticGraphValueProjection.js";
 
@@ -47,6 +50,7 @@ export function* projectSemanticObjects(
       ...ends,
       relation: OBJECT_RELATIONS[operation.kind],
       resolution: resolved ? "resolved" : "candidate",
+      evidence: inferredSemanticEvidenceAt(context.file, operation.location),
     });
     if (!resolved)
       addObjectUnknown(context, operation, target.slot ?? occurrence, target);
@@ -116,7 +120,7 @@ const objectTarget = (
     objectNode: slot,
     slot,
     slotApplicability: "resolved",
-    presence: fact.presence,
+    presence: operation.sourcePresence ?? fact.presence,
     receiverResolved:
       receiver.presence === "present" &&
       semanticContainer(receiver.value) !== null,

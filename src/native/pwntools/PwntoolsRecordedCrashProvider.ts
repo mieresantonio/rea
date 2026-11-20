@@ -1,8 +1,10 @@
+import type { HostPlatform } from "../../platform/HostPlatform.js";
 import {
-  AnalysisCancelledError,
   AnalysisOutputError,
+  cancelledBy,
 } from "../../domain/analysisErrorCore.js";
 import { AnalysisError } from "../../domain/analysisErrorBase.js";
+import { BinaryReader } from "../../domain/binaryContainer.js";
 import {
   recordedCrashPayloadSchema,
   recordedCrashSchema,
@@ -10,7 +12,7 @@ import {
   type RecordedCrash,
   type RecordedCrashPartialObservation,
 } from "../../domain/native/recordedCrash.js";
-import type { RecordedCrashPort } from "../../application/binaryDiagnostics/RecordedCrashPort.js";
+import type { RecordedCrashPort } from "../../ports/binaryDiagnostics/RecordedCrashPort.js";
 import { PrivateRuntimeRoot } from "../../process/PrivateRuntimeRoot.js";
 import { PwntoolsDecoder, type PwntoolsLauncher } from "./PwntoolsDecoder.js";
 import { PWNTOOLS_PROVIDER_IDENTITY } from "./PwntoolsProviderIdentity.js";
@@ -39,6 +41,7 @@ export class PwntoolsRecordedCrashProvider
     createRuntime: () => Promise<
       Pick<PrivateRuntimeRoot, "path" | "close">
     > = () => PrivateRuntimeRoot.create({ prefix: "rea-recorded-crash-" }),
+    host?: HostPlatform,
   ) {
     super(
       {
@@ -105,7 +108,11 @@ export class PwntoolsRecordedCrashProvider
             for (const register of thread.registers) {
               const start = Number(BigInt(register.location.offset));
               if (
-                snapshot.bytes.readBigUInt64LE(start) !== BigInt(register.value)
+                new BinaryReader(
+                  snapshot.bytes,
+                  true,
+                  "pwntools-recorded-crash",
+                ).word(start, 64) !== BigInt(register.value)
               )
                 throw new AnalysisOutputError(
                   "inspect_recorded_crash",
@@ -127,6 +134,7 @@ export class PwntoolsRecordedCrashProvider
           options,
           runCommand,
           timeoutMs,
+          producerLimits,
         }) => {
           if (!input.include_debugger_context) return value;
           const diagnostics = value.decoder_diagnostics;
@@ -144,8 +152,7 @@ export class PwntoolsRecordedCrashProvider
             });
           try {
             if (options?.signal?.aborted)
-              throw new AnalysisCancelledError("inspect_recorded_crash", {
-                cause: options.signal.reason,
+              throw cancelledBy("inspect_recorded_crash", options.signal, {
                 capturedOutput: diagnostics,
               });
             const authority = validateCoreFileMappingAuthority(
@@ -162,6 +169,7 @@ export class PwntoolsRecordedCrashProvider
               options,
               runCommand,
               timeoutMs,
+              producerLimits,
             });
             const context = completed.context;
             const enriched = validate(context);
@@ -194,6 +202,7 @@ export class PwntoolsRecordedCrashProvider
       environment,
       launcher,
       createRuntime,
+      host,
     );
   }
 }
